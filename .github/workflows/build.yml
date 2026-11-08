@@ -1,0 +1,69 @@
+name: PartsUnlimited CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+env:
+  BUILD_CONFIGURATION: Release
+  BUILD_PLATFORM: 'Any CPU'
+  PROJECT_DIR: PartsUnlimited-aspnet45
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: [self-hosted, Windows]
+
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v4
+
+      - name: Set up NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore NuGet packages
+        shell: powershell
+        run: nuget restore "$env:PROJECT_DIR/PartsUnlimited.sln" -NonInteractive
+
+      - name: Build website
+        shell: powershell
+        run: msbuild "$env:PROJECT_DIR/src/PartsUnlimitedWebsite/PartsUnlimitedWebsite.csproj" /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform="AnyCPU" /p:RestorePackages=false /m
+
+      - name: Build unit tests
+        shell: powershell
+        run: msbuild "$env:PROJECT_DIR/test/PartsUnlimited.UnitTests/PartsUnlimited.UnitTests.csproj" /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform="AnyCPU" /p:RestorePackages=false /m
+
+      - name: Run unit tests
+        shell: powershell
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found. Install Visual Studio Build Tools with test tools.' }
+          $vs = & $vswhere -latest -products * -property installationPath
+          if (-not $vs) { throw 'Visual Studio installation not found.' }
+          $vstest = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'
+          if (-not (Test-Path $vstest)) { throw 'vstest.console.exe not found. Install Visual Studio test tools.' }
+          $dll = Join-Path $env:GITHUB_WORKSPACE "$env:PROJECT_DIR\test\PartsUnlimited.UnitTests\bin\$env:BUILD_CONFIGURATION\PartsUnlimited.UnitTests.dll"
+          if (-not (Test-Path $dll)) { throw "Test assembly not found: $dll" }
+          & $vstest $dll '/Logger:trx;LogFileName=unit-tests.trx' "/ResultsDirectory:$env:RUNNER_TEMP"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Publish build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: partsunlimited-website
+          path: PartsUnlimited-aspnet45/src/PartsUnlimitedWebsite/bin/Release/
+          if-no-files-found: error
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: ${{ runner.temp }}/*.trx
+          if-no-files-found: warn
