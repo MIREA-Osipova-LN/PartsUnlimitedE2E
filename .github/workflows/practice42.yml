@@ -36,8 +36,16 @@ jobs:
         shell: powershell
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs = & $vswhere -latest -products * -property installationPath
-          $vstest = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'
+          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found.' }
+          # Choose an installation containing MSBuild, not SQL Server Management Studio.
+          $installations = @(& $vswhere -products * -requires Microsoft.Component.MSBuild -property installationPath)
+          $vstest = $null
+          foreach ($vs in $installations) {
+            $candidate = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'
+            if (Test-Path $candidate) { $vstest = $candidate; break }
+          }
+          if (-not $vstest) { throw 'vstest.console.exe not found in Visual Studio Build Tools. Open Visual Studio Installer and install the Test tools core features component.' }
+          Write-Host "Using VSTest: $vstest"
           $dll = Join-Path $env:GITHUB_WORKSPACE "$env:PROJECT_DIR\test\PartsUnlimited.UnitTests\bin\$env:BUILD_CONFIGURATION\PartsUnlimited.UnitTests.dll"
           & $vstest $dll '/Logger:trx;LogFileName=unit-tests.trx' "/ResultsDirectory:$env:RUNNER_TEMP"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
