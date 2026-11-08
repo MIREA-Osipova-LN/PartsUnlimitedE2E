@@ -95,6 +95,7 @@ jobs:
           # Preserve web.config until after copying, then configure the local SQL Express connection.
           & robocopy $source $destination /E /R:2 /W:1 /XF 'Web.config'
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+          $global:LASTEXITCODE = 0  # robocopy codes 0-7 are successful outcomes
           Copy-Item (Join-Path $source 'Web.config') (Join-Path $destination 'Web.config') -Force
           $config = Join-Path $destination 'Web.config'
           [xml]$xml = Get-Content -LiteralPath $config -Raw
