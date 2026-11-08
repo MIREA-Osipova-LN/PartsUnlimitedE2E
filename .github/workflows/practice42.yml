@@ -1,62 +1,6 @@
-name: Practice 4.2 - CI CD YAML
 
-on:
-  push:
-    branches: [master]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-env:
-  BUILD_CONFIGURATION: Release
-  PROJECT_DIR: PartsUnlimited-aspnet45
-
-jobs:
-  build:
-    name: Build and test
-    runs-on: [self-hosted, Windows]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up NuGet
-        uses: NuGet/setup-nuget@v2
-      - name: Set up MSBuild
-        uses: microsoft/setup-msbuild@v2
-      - name: Restore NuGet packages
-        shell: powershell
-        run: nuget restore "$env:PROJECT_DIR/PartsUnlimited.sln" -NonInteractive
-      - name: Build website and publish to folder
-        shell: powershell
-        run: |
-          $publish = Join-Path $env:RUNNER_TEMP 'partsunlimited-publish'
-          if (Test-Path $publish) { Remove-Item $publish -Recurse -Force }
-          $project = "$env:PROJECT_DIR/src/PartsUnlimitedWebsite/PartsUnlimitedWebsite.csproj"
-          & msbuild $project /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform=AnyCPU /p:RestorePackages=false /p:DeployOnBuild=true /p:WebPublishMethod=FileSystem "/p:publishUrl=$publish" /m
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path (Join-Path $publish 'Web.config'))) { throw "Publish failed: Web.config not found in $publish" }
-          if (-not (Test-Path (Join-Path $publish 'bin\PartsUnlimited.dll'))) { throw "Publish failed: PartsUnlimited.dll not found in $publish" }
-      - name: Build unit tests
-        shell: powershell
-        run: msbuild "$env:PROJECT_DIR/test/PartsUnlimited.UnitTests/PartsUnlimited.UnitTests.csproj" /p:Configuration=$env:BUILD_CONFIGURATION /p:Platform=AnyCPU /p:RestorePackages=false /m
-      - name: Run unit tests
-        shell: powershell
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (-not (Test-Path $vswhere)) { throw 'vswhere.exe not found.' }
-          # Choose an installation containing MSBuild, not SQL Server Management Studio.
-          $installations = @(& $vswhere -products * -requires Microsoft.Component.MSBuild -property installationPath)
-          $vstest = $null
-          foreach ($vs in $installations) {
-            $candidate = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\TestWindow\vstest.console.exe'
-            if (Test-Path $candidate) { $vstest = $candidate; break }
-          }
-          if (-not $vstest) { throw 'vstest.console.exe not found in Visual Studio Build Tools. Open Visual Studio Installer and install the Test tools core features component.' }
-          Write-Host "Using VSTest: $vstest"
-          $dll = Join-Path $env:GITHUB_WORKSPACE "$env:PROJECT_DIR\test\PartsUnlimited.UnitTests\bin\$env:BUILD_CONFIGURATION\PartsUnlimited.UnitTests.dll"
-          & $vstest $dll '/Logger:trx;LogFileName=unit-tests.trx' "/ResultsDirectory:$env:RUNNER_TEMP"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Publish deployment artifact (drop)
+    
+  
         uses: actions/upload-artifact@v4
         with:
           name: drop
@@ -105,3 +49,4 @@ jobs:
           $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 40
           if ($response.StatusCode -ne 200) { throw "IIS returned HTTP $($response.StatusCode)" }
           Write-Host "Website responds with HTTP $($response.StatusCode) at $url"
+
